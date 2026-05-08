@@ -1,0 +1,85 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": ["**", "!node_modules", "!dist"]
+	},
+	"css": {
+		"formatter": {
+			"enabled": true,
+			"indentWidth": 2,
+			"lineWidth": 120,
+			"lineEnding": "lf",
+			"indentStyle": "tab",
+			"quoteStyle": "single"
+		}
+	},
+	"json": {
+		"formatter": {
+			"enabled": true,
+			"expand": "auto",
+			"lineWidth": 120,
+			"indentWidth": 2,
+			"lineEnding": "lf",
+			"indentStyle": "tab",
+			"bracketSpacing": true,
+			"trailingCommas": "none"
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"enabled": true,
+			"expand": "auto",
+			"lineWidth": 180,
+			"indentWidth": 4,
+			"lineEnding": "lf",
+			"indentStyle": "tab",
+			"quoteStyle": "single",
+			"bracketSpacing": true,
+			"bracketSameLine": true,
+			"trailingCommas": "none",
+			"semicolons": "asNeeded",
+			"jsxQuoteStyle": "single",
+			"attributePosition": "auto",
+			"operatorLinebreak": "after",
+			"quoteProperties": "asNeeded",
+			"arrowParentheses": "asNeeded"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"performance": {
+				"noImgElement": "off"
+			},
+			"suspicious": {
+				"noUnknownAtRules": "off",
+				"noControlCharactersInRegex": "off"
+			},
+			"a11y": {
+				"useKeyWithClickEvents": "off",
+				"noStaticElementInteractions": "off"
+			},
+			"style": {
+				"noDescendingSpecificity": "off"
+			}
+		},
+		"domains": {
+			"next": "recommended",
+			"react": "recommended"
+		}
+	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	}
+}

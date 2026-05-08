@@ -1,0 +1,63 @@
+{
+  "name": "artesia",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Lightweight HTTP server for Bun/Node",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TiwPhiraphan/artesia.git"
+  },
+  "homepage": "https://github.com/TiwPhiraphan/artesia#readme",
+  "keywords": [
+    "http",
+    "server",
+    "bun",
+    "node",
+    "router"
+  ],
+  "engines": {
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "import": "./dist/middleware.js",
+      "require": "./dist/middleware.cjs"
+    }
+  },
+  "bin": {
+    "create-http-server": "./bin/create-app.js"
+  },
+  "files": [
+    "bin/create-app.js",
+    "dist"
+  ],
+  "scripts": {
+    "lint": "biome check src",
+    "format": "biome format --write src",
+    "export": "bun format && bun lint && bun build.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@clack/prompts": "^1.3.0",
+    "@types/bun": "^1.3.13",
+    "@types/busboy": "^1.5.4",
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "cookie": "1.1.1",
+    "busboy": "^1.6.0",
+    "find-my-way": "^9.6.0"
+  }
+}
