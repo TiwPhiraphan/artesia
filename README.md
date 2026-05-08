@@ -7,7 +7,7 @@
 [![bun](https://img.shields.io/badge/bun-%3E%3D1.0-black)](https://bun.sh)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
-Fayde is a minimal HTTP server framework powered by [`node:http`](https://nodejs.org/api/http.html) and the [find-my-way](https://github.com/delvedor/find-my-way) radix-trie router. It gives you typed path params, automatic body parsing, a clean middleware model, and expressive response helpers — without the overhead of a full framework.
+Artesia is a minimal HTTP server framework powered by [`node:http`](https://nodejs.org/api/http.html) and the [find-my-way](https://github.com/delvedor/find-my-way) radix-trie router. It gives you typed path params, automatic body parsing, a clean middleware model, and expressive response helpers — without the overhead of a full framework.
 
 ---
 
@@ -115,9 +115,9 @@ my-app/
 The generated `src/index.ts` includes a basic working server to get you started immediately:
 
 ```ts
-import { Fayde } from 'artesia'
+import { Artesia } from 'artesia'
 
-const app = new Fayde()
+const app = new Artesia()
 
 app.get('/', (ctx) => {
   return { message: 'Hello World!' }
@@ -164,12 +164,12 @@ app
 You can also use the class directly:
 
 ```ts
-import { Fayde } from 'artesia'
+import { Artesia } from 'artesia'
 
-const app = new Fayde()
+const app = new Artesia()
 ```
 
-Both `Artesia()` and `new Fayde()` are identical — use whichever you prefer.
+Both `Artesia()` and `new Artesia()` are identical — use whichever you prefer.
 
 ---
 
@@ -177,7 +177,7 @@ Both `Artesia()` and `new Fayde()` are identical — use whichever you prefer.
 
 ### Routing
 
-Fayde exposes one method per HTTP verb, plus a generic `add()` for any method. All methods return `this`, so you can chain registrations.
+Artesia exposes one method per HTTP verb, plus a generic `add()` for any method. All methods return `this`, so you can chain registrations.
 
 ```ts
 app.get('/path', handler)
@@ -258,7 +258,7 @@ app.get('/search', (ctx) => {
 
 ### Request Body
 
-Fayde automatically parses the request body based on `Content-Type`. No configuration needed.
+Artesia automatically parses the request body based on `Content-Type`. No configuration needed.
 
 | Content-Type | `ctx.body` type |
 |---|---|
@@ -294,7 +294,7 @@ app.post('/webhook', (ctx) => {
 
 ### Response Serialization
 
-Return any value from a handler — Fayde serializes it automatically:
+Return any value from a handler — Artesia serializes it automatically:
 
 | Return value | HTTP status | Content-Type |
 |---|---|---|
@@ -302,7 +302,7 @@ Return any value from a handler — Fayde serializes it automatically:
 | `object` / `array` | 200 | `application/json; charset=utf-8` |
 | `Buffer` | 200 | `application/octet-stream` |
 | `null` / `undefined` | 204 | _(no body)_ |
-| `FaydeResponse` | as set | as set |
+| `ArtesiaResponse` | as set | as set |
 
 ```ts
 app.get('/text', () => 'hello')
@@ -365,7 +365,7 @@ Create isolated sub-routers with their own `basePath` and merge them into a pare
 
 ```ts
 // users.ts
-export const users = new Fayde({ basePath: '/users' })
+export const users = new Artesia({ basePath: '/users' })
 
 users
   .get('/', () => listUsers())
@@ -377,7 +377,7 @@ users
 // app.ts
 import { users } from './users'
 
-const app = new Fayde({ basePath: '/api/v1' })
+const app = new Artesia({ basePath: '/api/v1' })
 
 app
   .merge(users)  // → routes mounted at /api/v1/users
@@ -538,7 +538,7 @@ ctx.set.cookies(
 ## Server Options
 
 ```ts
-const app = new Fayde({
+const app = new Artesia({
   basePath: '/api/v1', // Prefix prepended to every route (trailing slash stripped automatically)
 })
 ```
@@ -547,7 +547,7 @@ const app = new Fayde({
 
 ## Custom Server Integration
 
-Use `app.handler` to plug Fayde into an existing `node:http` server, HTTPS server, or any framework that accepts a standard request handler:
+Use `app.handler` to plug Artesia into an existing `node:http` server, HTTPS server, or any framework that accepts a standard request handler:
 
 ```ts
 import { createServer } from 'node:http'
@@ -645,7 +645,7 @@ app.post('/login', (ctx) => {
 
 ## TypeScript
 
-Fayde is written in TypeScript and ships with full type definitions. Path parameters are inferred from the route string at compile time:
+Artesia is written in TypeScript and ships with full type definitions. Path parameters are inferred from the route string at compile time:
 
 ```ts
 import type { Handler } from 'artesia'
@@ -667,8 +667,8 @@ import type {
   Context,          // ctx passed to handlers
   Handler,          // (ctx: Context<Path>) => unknown | Promise<unknown>
   Middleware,       // (ctx: Context, next: () => Promise<void>) => unknown
-  FaydeOptions,     // { basePath?: string }
-  FaydeResponse,    // internal response object
+  ArtesiaOptions,     // { basePath?: string }
+  ArtesiaResponse,    // internal response object
   ContextFile,      // uploaded file shape
   CookieOptions,    // set-cookie options
   FileOptions,      // ctx.file() options
@@ -688,7 +688,7 @@ import { HTTP_STATUS } from 'artesia' // Record<HttpStatusText, number>
 
 ## Built-in Middleware
 
-Fayde ships first-party middleware for the most common cross-cutting concerns. Import from `artesia/middleware`.
+Artesia ships first-party middleware for the most common cross-cutting concerns. Import from `artesia/middleware`.
 
 ---
 
@@ -829,11 +829,11 @@ interface LogFields {
 
 ## API Reference
 
-### `class Fayde`
+### `class Artesia`
 
 | Member | Signature | Description |
 |---|---|---|
-| `constructor` | `(options?: FaydeOptions)` | Create a new app instance |
+| `constructor` | `(options?: ArtesiaOptions)` | Create a new app instance |
 | `get` | `(path, ...handlers)` | Register GET route |
 | `post` | `(path, ...handlers)` | Register POST route |
 | `put` | `(path, ...handlers)` | Register PUT route |
@@ -843,13 +843,13 @@ interface LogFields {
 | `options` | `(path, ...handlers)` | Register OPTIONS route |
 | `add` | `(method, path, ...handlers)` | Register route for any HTTP method |
 | `use` | `(middleware: Middleware)` | Add global middleware |
-| `merge` | `(other: Fayde)` | Import routes + middleware from another instance |
+| `merge` | `(other: Artesia)` | Import routes + middleware from another instance |
 | `listen` | `(port?, hostname?)` | Start the HTTP server — returns `Promise<{ port, server }>` |
 | `handler` | `(req, res) => Promise<void>` | Raw Node.js request handler (for custom server integration) |
 
 ### `Artesia(options?)`
 
-Factory function — equivalent to `new Fayde(options)`.
+Factory function — equivalent to `new Artesia(options)`.
 
 ---
 
