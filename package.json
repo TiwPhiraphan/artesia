@@ -1,6 +1,6 @@
 {
 	"name": "artesia",
-	"version": "0.0.4",
+	"version": "0.0.5",
 	"type": "module",
 	"description": "Lightweight HTTP server for Bun/Node",
 	"license": "MIT",
@@ -9,7 +9,7 @@
 		"url": "https://github.com/TiwPhiraphan/artesia.git"
 	},
 	"homepage": "https://github.com/TiwPhiraphan/artesia#readme",
-	"keywords": ["http", "server", "bun", "node", "router"],
+	"keywords": ["http", "server", "bun", "node", "node-http", "node-server", "router", "artesia"],
 	"engines": {
 		"bun": ">=1.0.0",
 		"node": ">=18.0.0"
