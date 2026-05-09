@@ -1,6 +1,6 @@
 # artesia
 
-> Lightweight, fully-typed HTTP framework built on Node.js core — no dependencies except what it actually needs.
+> Lightweight, fully-typed HTTP framework built on Node.js core.
 
 [![npm version](https://img.shields.io/npm/v/artesia)](https://www.npmjs.com/package/artesia)
 [![license](https://img.shields.io/npm/l/artesia)](./LICENSE)
@@ -361,13 +361,16 @@ Request → mw[0] → mw[1] → ... → route handlers → mw[1] (after next) �
 
 ### Sub-apps & Merging
 
-Create isolated sub-routers with their own `basePath` and merge them into a parent app:
+Create isolated sub-routers with their own `basePath`, then mount them with `.use()` or `.merge()`.
+
+Middleware defined on a sub-app is **scoped to that sub-app's routes only** — it does not leak into the parent's other routes.
 
 ```ts
 // users.ts
 export const users = new Artesia({ basePath: '/users' })
 
 users
+  .use(requireAuth) // runs only for /users routes
   .get('/', () => listUsers())
   .get('/:id', (ctx) => getUser(ctx.params.get('id')))
   .post('/', (ctx) => createUser(ctx.body))
@@ -380,11 +383,11 @@ import { users } from './users'
 const app = new Artesia({ basePath: '/api/v1' })
 
 app
-  .merge(users)  // → routes mounted at /api/v1/users
+  .use(users)   // → routes mounted at /api/v1/users
   .listen(3000)
 ```
 
-`merge()` copies both routes and middleware from the merged instance into the parent.
+`.use(subApp)` and `.merge(subApp)` are equivalent — prefer `.use()` for consistency with the middleware API.
 
 ---
 
@@ -843,7 +846,8 @@ interface LogFields {
 | `options` | `(path, ...handlers)` | Register OPTIONS route |
 | `add` | `(method, path, ...handlers)` | Register route for any HTTP method |
 | `use` | `(middleware: Middleware)` | Add global middleware |
-| `merge` | `(other: Artesia)` | Import routes + middleware from another instance |
+| `use` | `(app: Artesia)` | Mount a sub-app (middleware scoped to its routes) |
+| `merge` | `(other: Artesia)` | Mount a sub-app — same as `.use(subApp)` |
 | `listen` | `(port?, hostname?)` | Start the HTTP server — returns `Promise<{ port, server }>` |
 | `handler` | `(req, res) => Promise<void>` | Raw Node.js request handler (for custom server integration) |
 
