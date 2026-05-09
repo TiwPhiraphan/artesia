@@ -27,7 +27,7 @@ jobs:
       - name: Build package
         run: bun export
       - name: Test package
-        run: bun test
+        run: bun tester
       - name: Publish package
         run: npm publish --provenance --access=public
         env:

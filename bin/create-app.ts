@@ -121,7 +121,7 @@ async function main() {
 		placeholder: 'my-app',
 		defaultValue: 'my-app',
 		validate(v) {
-            const val = v.trim()
+			const val = v.trim()
 			if (!v || !val) return 'Project name is required'
 			if (!/^[a-z0-9-_]+$/.test(v)) return 'Use lowercase letters, numbers, hyphens, underscores only'
 			if (existsSync(v)) return `Directory "${v}" already exists`

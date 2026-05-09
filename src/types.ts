@@ -158,6 +158,8 @@ export interface RouteDefinition {
 	method: HTTPMethod
 	path: string
 	handlers: Handler[]
+	/** Middlewares scoped to the instance that owns this route (snapshotted at merge time). */
+	instanceMiddlewares: Middleware[]
 }
 
 export interface ArtesiaOptions {
