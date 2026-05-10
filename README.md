@@ -1,4 +1,4 @@
-# artesia
+# Artesia
 
 > Lightweight, fully-typed HTTP framework built on Node.js core.
 
