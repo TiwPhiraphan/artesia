@@ -1,7 +1,10 @@
 # Artesia
 
-> Lightweight, fully-typed HTTP framework built on Node.js core.
+> Fast, ergonomic HTTP framework for Bun and Node.js.
+> 
+> 🌐 **Official Website & Docs:** [https://artesia.maskflow.online](https://artesia.maskflow.online)
 
+[![website](https://img.shields.io/badge/website-artesia.maskflow.online-8b5cf6?style=flat&logo=safari&logoColor=white)](https://artesia.maskflow.online)
 [![npm version](https://img.shields.io/npm/v/artesia)](https://www.npmjs.com/package/artesia)
 [![license](https://img.shields.io/npm/l/artesia)](./LICENSE)
 [![bun](https://img.shields.io/badge/bun-%3E%3D1.0-black)](https://bun.sh)
