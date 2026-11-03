@@ -1,13 +1,10 @@
 import { rm } from 'node:fs/promises'
-import { $ } from 'bun'
 import { build } from 'tsup'
 
 await rm('./dist', { recursive: true, force: true })
 
-await $`bunx tsc -p tsconfig.build.json --emitDeclarationOnly`
-
 await build({
-	entry: ['src/**/*.ts'],
+	entry: ['src/index.ts', 'src/middleware.ts'],
 	outDir: 'dist',
 	format: ['esm', 'cjs'],
 	target: 'node20',
@@ -16,9 +13,10 @@ await build({
 	minifyIdentifiers: true,
 	splitting: false,
 	sourcemap: false,
-	cjsInterop: false,
-	clean: false,
-	bundle: false
+	cjsInterop: true,
+	clean: true,
+	bundle: true,
+	dts: true
 })
 
 await build({

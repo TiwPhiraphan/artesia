@@ -838,7 +838,7 @@ describe('requestId middleware', () => {
 		expect(idHeader).toBeDefined()
 		expect(idHeader?.length).toBeGreaterThan(10)
 		const json = (await res.json()) as { id: string }
-		expect(json.id).toBe(idHeader)
+		expect(json.id).toBe(idHeader as string)
 		await stopApp()
 	})
 	test('propagates existing incoming x-request-id', async () => {
@@ -875,5 +875,45 @@ describe('serveStatic middleware', () => {
 		const res = await fetch(`${baseUrl}/static/../../package.json`)
 		expect([403, 404]).toContain(res.status)
 		await stopApp()
+	})
+})
+
+describe('package export validation', () => {
+	test('src/index exports both default and named members properly', async () => {
+		const indexModule = await import('../src/index')
+		expect(indexModule.default).toBe(indexModule.Artesia)
+		expect(typeof indexModule.Artesia).toBe('function')
+		expect(typeof indexModule.artesia).toBe('function')
+		expect(typeof indexModule.cors).toBe('function')
+		expect(typeof indexModule.logger).toBe('function')
+		expect(typeof indexModule.secureHeaders).toBe('function')
+		expect(typeof indexModule.requestId).toBe('function')
+		expect(typeof indexModule.serveStatic).toBe('function')
+		expect(typeof indexModule.buildMiddleware).toBe('function')
+		expect(typeof indexModule.makeArtesiaResponse).toBe('function')
+		expect(typeof indexModule.isArtesiaResponse).toBe('function')
+		expect(typeof indexModule.HTTP_STATUS).toBe('object')
+
+		const appFromDefault = indexModule.default()
+		expect(appFromDefault).toBeInstanceOf(indexModule.Artesia)
+	})
+
+	test('dist exports are valid for consumers', async () => {
+		const distEsm = await import('../dist/index.js')
+		expect(distEsm.default).toBe(distEsm.Artesia)
+		expect(typeof distEsm.Artesia).toBe('function')
+		expect(typeof distEsm.artesia).toBe('function')
+		expect(typeof distEsm.cors).toBe('function')
+		expect(typeof distEsm.logger).toBe('function')
+		expect(typeof distEsm.secureHeaders).toBe('function')
+		expect(typeof distEsm.requestId).toBe('function')
+		expect(typeof distEsm.serveStatic).toBe('function')
+
+		const distMw = await import('../dist/middleware.js')
+		expect(typeof distMw.cors).toBe('function')
+		expect(typeof distMw.logger).toBe('function')
+		expect(typeof distMw.secureHeaders).toBe('function')
+		expect(typeof distMw.requestId).toBe('function')
+		expect(typeof distMw.serveStatic).toBe('function')
 	})
 })
