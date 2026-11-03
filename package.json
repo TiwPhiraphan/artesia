@@ -1,6 +1,6 @@
 {
 	"name": "artesia",
-	"version": "0.0.5",
+	"version": "0.0.6",
 	"type": "module",
 	"description": "Lightweight HTTP server for Bun/Node",
 	"license": "MIT",
@@ -29,10 +29,13 @@
 		}
 	},
 	"bin": {
+		"artesia": "./bin/create-app.js",
+		"create-artesia": "./bin/create-app.js",
 		"create-http-server": "./bin/create-app.js"
 	},
 	"files": ["bin/create-app.js", "dist"],
 	"scripts": {
+		"test": "bun test",
 		"lint": "biome check",
 		"format": "biome format --write",
 		"tester": "NODE_ENV=production bun test",

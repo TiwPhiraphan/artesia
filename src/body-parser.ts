@@ -8,61 +8,104 @@ export interface ParsedBody {
 	files: ContextFile[]
 }
 
-function readRaw(req: IncomingMessage): Promise<Buffer> {
+function readRaw(req: IncomingMessage, maxBodySize?: number): Promise<Buffer> {
+	if (req.readableEnded) {
+		return Promise.resolve(Buffer.alloc(0))
+	}
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = []
-		req.on('data', (chunk: Buffer) => chunks.push(chunk))
+		let bytesRead = 0
+		req.on('data', (chunk: Buffer) => {
+			bytesRead += chunk.byteLength
+			if (maxBodySize && bytesRead > maxBodySize) {
+				const err = new Error('Payload Too Large')
+				;(err as unknown as { status: number }).status = 413
+				req.destroy()
+				reject(err)
+				return
+			}
+			chunks.push(chunk)
+		})
 		req.on('end', () => resolve(Buffer.concat(chunks)))
 		req.on('error', reject)
 	})
 }
 
-function parseMultipart(req: IncomingMessage, contentType: string): Promise<{ fields: Record<string, string>; files: ContextFile[] }> {
+function parseMultipart(req: IncomingMessage, contentType: string, maxBodySize?: number): Promise<{ fields: Record<string, string>; files: ContextFile[] }> {
 	return new Promise((resolve, reject) => {
 		const fields: Record<string, string> = {}
 		const files: ContextFile[] = []
-		const bb = busboy({ headers: { 'content-type': contentType } })
+		let bb: ReturnType<typeof busboy>
+		try {
+			bb = busboy({
+				headers: { 'content-type': contentType },
+				limits: maxBodySize ? { fileSize: maxBodySize } : undefined
+			})
+		} catch {
+			return resolve({ fields, files })
+		}
+		const filePromises: Promise<void>[] = []
 		bb.on('file', (fieldname, stream, info) => {
 			const { filename, encoding, mimeType } = info
 			const chunks: Buffer[] = []
-			stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-			stream.on('end', () => {
-				const buffer = Buffer.concat(chunks)
-				files.push({
-					fieldname,
-					filename,
-					encoding,
-					mimetype: mimeType,
-					buffer,
-					size: buffer.byteLength
+			filePromises.push(
+				new Promise((resFile, rejFile) => {
+					stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+					stream.on('end', () => {
+						const buffer = Buffer.concat(chunks)
+						files.push({
+							fieldname,
+							filename,
+							encoding,
+							mimetype: mimeType,
+							buffer,
+							size: buffer.byteLength
+						})
+						resFile()
+					})
+					stream.on('error', rejFile)
 				})
-			})
-			stream.on('error', reject)
+			)
 		})
 		bb.on('field', (name, val) => {
 			fields[name] = val
 		})
-		bb.on('close', () => resolve({ fields, files }))
-		bb.on('error', reject)
+		bb.on('close', async () => {
+			try {
+				await Promise.all(filePromises)
+				resolve({ fields, files })
+			} catch (err) {
+				reject(err)
+			}
+		})
+		bb.on('error', () => {
+			resolve({ fields, files })
+		})
 		req.pipe(bb)
 	})
 }
 
-export async function parseBody(req: IncomingMessage): Promise<ParsedBody> {
+export async function parseBody(req: IncomingMessage, maxBodySize?: number): Promise<ParsedBody> {
 	const contentType = req.headers['content-type'] ?? ''
 	const method = (req.method ?? 'GET').toUpperCase()
 	if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
 		return { body: null, rawBody: null, files: [] }
 	}
+	const cl = req.headers['content-length']
+	if (maxBodySize && cl && Number(cl) > maxBodySize) {
+		const err = new Error('Payload Too Large')
+		;(err as unknown as { status: number }).status = 413
+		throw err
+	}
 	if (contentType.includes('multipart/form-data')) {
-		const { fields, files } = await parseMultipart(req, contentType)
+		const { fields, files } = await parseMultipart(req, contentType, maxBodySize)
 		return {
 			body: fields,
 			rawBody: null,
 			files
 		}
 	}
-	const rawBody = await readRaw(req)
+	const rawBody = await readRaw(req, maxBodySize)
 	if (rawBody.byteLength === 0) {
 		return { body: null, rawBody: null, files: [] }
 	}

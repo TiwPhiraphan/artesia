@@ -162,8 +162,14 @@ export interface RouteDefinition {
 	instanceMiddlewares: Middleware[]
 }
 
+export type ErrorHandler = (err: Error, ctx: Context) => unknown | Promise<unknown>
+
+export type NotFoundHandler = (ctx: Context) => unknown | Promise<unknown>
+
 export interface ArtesiaOptions {
 	basePath?: string
+	poweredBy?: boolean | string
+	maxBodySize?: number
 }
 
 export const HTTP_STATUS: Record<HttpStatusText, number> = {

@@ -33,7 +33,11 @@ const MIME: Record<string, string> = {
 	'.mp3': 'audio/mpeg',
 	'.wav': 'audio/wav',
 	'.zip': 'application/zip',
-	'.gz': 'application/gzip'
+	'.gz': 'application/gzip',
+	'.wasm': 'application/wasm',
+	'.avif': 'image/avif',
+	'.csv': 'text/csv; charset=utf-8',
+	'.map': 'application/json; charset=utf-8'
 }
 
 function lookupMime(filePath: string): string {
@@ -42,7 +46,12 @@ function lookupMime(filePath: string): string {
 }
 
 export function makeArtesiaResponse(body: string | Buffer | null, status = 200, headers?: Record<string, string | string[]>): ArtesiaResponse {
-	const map = new Map<string, string | string[]>(Object.entries(headers ?? {}))
+	const map = new Map<string, string | string[]>()
+	if (headers) {
+		for (const [k, v] of Object.entries(headers)) {
+			map.set(k.toLowerCase(), v)
+		}
+	}
 	return { __artesia: true, body, status, headers: map }
 }
 
@@ -54,12 +63,18 @@ export function buildSetResponse(responseHeaders: Map<string, string | string[]>
 	}
 	return {
 		headers(...args: unknown[]): void {
-			if (args.length === 2) {
+			if (args.length === 0 || args[0] == null) {
+				return
+			}
+			if (args.length >= 2) {
 				const [name, value] = args as [string, string | number | readonly string[]]
-				responseHeaders.set(name.toLowerCase(), normalizeHeaderValue(value))
+				if (typeof name === 'string' && value !== undefined) {
+					responseHeaders.set(name.toLowerCase(), normalizeHeaderValue(value))
+				}
 				return
 			}
 			const [value] = args as [Headers | Map<string, string | number | readonly string[]> | Record<string, string | number | readonly string[]>]
+			if (!value) return
 			if (value instanceof Headers) {
 				for (const [k, v] of value.entries()) {
 					responseHeaders.set(k.toLowerCase(), v)
@@ -68,23 +83,31 @@ export function buildSetResponse(responseHeaders: Map<string, string | string[]>
 				for (const [k, v] of value.entries()) {
 					responseHeaders.set(k.toLowerCase(), normalizeHeaderValue(v))
 				}
-			} else {
+			} else if (typeof value === 'object') {
 				for (const [k, v] of Object.entries(value)) {
-					responseHeaders.set(k.toLowerCase(), normalizeHeaderValue(v))
+					if (v !== undefined) {
+						responseHeaders.set(k.toLowerCase(), normalizeHeaderValue(v))
+					}
 				}
 			}
 		},
 		cookies(...args: unknown[]): void {
+			if (args.length === 0 || args[0] == null) return
 			const setCookieValues: string[] = []
 			if (typeof args[0] === 'string') {
 				const [name, value, options] = args as [string, string, CookieOptions?]
-				setCookieValues.push(serializeCookie(name, value, options))
-			} else {
-				const [obj, options] = args as [Record<string, string>, CookieOptions?]
-				for (const [name, value] of Object.entries(obj)) {
+				if (typeof value === 'string') {
 					setCookieValues.push(serializeCookie(name, value, options))
 				}
+			} else if (typeof args[0] === 'object') {
+				const [obj, options] = args as [Record<string, string>, CookieOptions?]
+				for (const [name, value] of Object.entries(obj)) {
+					if (typeof value === 'string') {
+						setCookieValues.push(serializeCookie(name, value, options))
+					}
+				}
 			}
+			if (setCookieValues.length === 0) return
 			const existing = responseHeaders.get('set-cookie')
 			const combined = [...(Array.isArray(existing) ? existing : existing ? [existing] : []), ...setCookieValues]
 			responseHeaders.set('set-cookie', combined)
@@ -109,9 +132,13 @@ export function buildContext<Path extends string>(options: {
 	files: ContextFile[]
 	store: Map<string, unknown>
 	cookies: Record<string, string>
+	poweredBy?: string | null
 }): Context<Path> {
-	const { req, method, pathname, params, body, rawBody, files, store, cookies } = options
+	const { req, method, pathname, params, body, rawBody, files, store, cookies, poweredBy } = options
 	const responseHeaders = new Map<string, string | string[]>()
+	if (poweredBy) {
+		responseHeaders.set('x-powered-by', poweredBy)
+	}
 	const responseStatus = { value: 200 }
 	const paramMap = new Map<string, string>(Object.entries(params)) as ParamMap<Path>
 	const headers = new Headers()
@@ -140,7 +167,7 @@ export function buildContext<Path extends string>(options: {
 		rawBody,
 		body,
 		cookie(name: string): string | undefined {
-			return cookies[name]
+			return Object.hasOwn(cookies, name) ? cookies[name] : undefined
 		},
 		redirect(path: string, status: HttpRedirectType = 302): ArtesiaResponse {
 			return makeArtesiaResponse(null, status, { location: path })
@@ -153,10 +180,11 @@ export function buildContext<Path extends string>(options: {
 		async file(filePath: string, opts: FileOptions = {}): Promise<ArtesiaResponse> {
 			const buffer = await readFile(filePath)
 			const contentType = opts.contentType ?? lookupMime(filePath)
+			const safeFilename = opts.filename ? opts.filename.replace(/"/g, '\\"') : undefined
 			const disposition =
 				opts.disposition === 'attachment'
-					? `attachment${opts.filename ? `; filename="${opts.filename}"` : ''}`
-					: `inline${opts.filename ? `; filename="${opts.filename}"` : ''}`
+					? `attachment${safeFilename ? `; filename="${safeFilename}"` : ''}`
+					: `inline${safeFilename ? `; filename="${safeFilename}"` : ''}`
 			return makeArtesiaResponse(buffer, 200, {
 				'content-type': contentType,
 				'content-disposition': disposition,

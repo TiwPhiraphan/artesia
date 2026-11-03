@@ -63,6 +63,7 @@ function packageJson(name: string, useTs: boolean, pm: string) {
 		{
 			name,
 			version: '0.0.1',
+			type: 'module',
 			private: true,
 			scripts: scripts(pm, useTs),
 			dependencies: {
@@ -113,7 +114,7 @@ dist
 
 async function main() {
 	console.log('')
-	intro(' create-http-app ')
+	intro(' create-artesia ')
 
 	// Project name
 	const nameInput = await text({

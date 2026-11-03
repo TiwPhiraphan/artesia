@@ -7,7 +7,7 @@
 [![bun](https://img.shields.io/badge/bun-%3E%3D1.0-black)](https://bun.sh)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
-Artesia is a minimal HTTP server framework powered by [`node:http`](https://nodejs.org/api/http.html) and the [find-my-way](https://github.com/delvedor/find-my-way) radix-trie router. It gives you typed path params, automatic body parsing, a clean middleware model, and expressive response helpers — without the overhead of a full framework.
+Artesia is a minimal, ultra-fast HTTP server framework powered by [`node:http`](https://nodejs.org/api/http.html) and the [find-my-way](https://github.com/delvedor/find-my-way) radix-trie router. It gives you compile-time typed path parameters, automatic body parsing, scoped sub-apps, first-party middleware, and expressive response helpers — without the overhead or complexity of a heavy framework.
 
 ---
 
@@ -24,6 +24,10 @@ Artesia is a minimal HTTP server framework powered by [`node:http`](https://node
   - [Response Serialization](#response-serialization)
   - [Middleware](#middleware)
   - [Sub-apps & Merging](#sub-apps--merging)
+- [Error & 404 Handling](#error--404-handling)
+  - [Custom Error Handler (`app.onError`)](#custom-error-handler-apponerror)
+  - [Custom 404 Handler (`app.notFound`)](#custom-404-handler-appnotfound)
+- [Route Grouping](#route-grouping)
 - [Context API (`ctx`)](#context-api-ctx)
   - [Request Properties](#request-properties)
   - [Response Helpers](#response-helpers)
@@ -37,6 +41,9 @@ Artesia is a minimal HTTP server framework powered by [`node:http`](https://node
   - [buildMiddleware](#buildmiddleware)
   - [cors](#cors)
   - [logger](#logger)
+  - [secureHeaders](#secureheaders)
+  - [requestId](#requestid)
+  - [serveStatic](#servestatic)
 - [API Reference](#api-reference)
 - [License](#license)
 
@@ -51,6 +58,9 @@ npm install artesia
 # bun
 bun add artesia
 
+# pnpm
+pnpm add artesia
+
 # yarn
 yarn add artesia
 ```
@@ -61,7 +71,7 @@ yarn add artesia
 
 ## Create a New Project
 
-The fastest way to get started is with the `create-artesia` scaffolding CLI. It generates a ready-to-run project with your choice of language and package manager.
+The fastest way to get started is with the scaffolding CLI. It generates a ready-to-run project with your choice of language and package manager.
 
 ```bash
 # bun
@@ -80,7 +90,7 @@ yarn dlx artesia
 The CLI will walk you through an interactive setup:
 
 ```
-◆  create-http-app
+◆  create-artesia
 │
 ◇  Project name
 │  my-app
@@ -117,7 +127,7 @@ The generated `src/index.ts` includes a basic working server to get you started 
 ```ts
 import { Artesia } from 'artesia'
 
-const app = new Artesia()
+const app = Artesia()
 
 app.get('/', (ctx) => {
   return { message: 'Hello World!' }
@@ -161,7 +171,7 @@ app
   .then(({ port }) => console.log(`Listening on http://localhost:${port}`))
 ```
 
-You can also use the class directly:
+You can also use the `new` keyword directly if you prefer:
 
 ```ts
 import { Artesia } from 'artesia'
@@ -169,7 +179,7 @@ import { Artesia } from 'artesia'
 const app = new Artesia()
 ```
 
-Both `Artesia()` and `new Artesia()` are identical — use whichever you prefer.
+Both `Artesia()` and `new Artesia()` are identical — use whichever style you prefer.
 
 ---
 
@@ -190,7 +200,7 @@ app.options('/path', handler)
 app.add('PURGE', '/path', handler) // any find-my-way HTTPMethod
 ```
 
-**Static string shorthand** — if you pass a string as the first handler, `GET` returns it directly without creating a closure:
+**Static string shorthand** — if you pass a string as the first handler, `GET` returns it directly:
 
 ```ts
 app.get('/', 'Hello World') // returns "Hello World" as text/plain
@@ -216,7 +226,7 @@ app.get(
 
 ### Path Parameters
 
-Route params are defined with `:paramName` syntax and are accessible through `ctx.params.get()`. The type of `ctx.params` is inferred from the route path, so you get full auto-complete.
+Route params are defined with `:paramName` syntax and are accessible through `ctx.params.get()`. The type of `ctx.params` is inferred from the route path, so you get full TypeScript auto-complete.
 
 ```ts
 app.get('/users/:id', (ctx) => {
@@ -258,7 +268,7 @@ app.get('/search', (ctx) => {
 
 ### Request Body
 
-Artesia automatically parses the request body based on `Content-Type`. No configuration needed.
+Artesia automatically parses the request body based on `Content-Type`. No extra configuration or body-parser packages needed.
 
 | Content-Type | `ctx.body` type |
 |---|---|
@@ -339,6 +349,15 @@ app.use((ctx) => {
 })
 ```
 
+**Path-scoped middleware** — scope middleware to run only for paths matching a prefix:
+
+```ts
+app.use('/admin', async (ctx, next) => {
+  // Runs only for /admin and /admin/* routes
+  await next()
+})
+```
+
 **Sharing state across middleware** — use `ctx.store`, a per-request `Map<string, unknown>`:
 
 ```ts
@@ -351,23 +370,17 @@ app.use(async (ctx, next) => {
 app.get('/me', (ctx) => ctx.store.get('user'))
 ```
 
-**Middleware execution order:**
-
-```
-Request → mw[0] → mw[1] → ... → route handlers → mw[1] (after next) → mw[0] (after next) → Response
-```
-
 ---
 
 ### Sub-apps & Merging
 
 Create isolated sub-routers with their own `basePath`, then mount them with `.use()` or `.merge()`.
 
-Middleware defined on a sub-app is **scoped to that sub-app's routes only** — it does not leak into the parent's other routes.
+Middleware defined on a sub-app is **scoped to that sub-app's routes only** — it does not leak into other routes.
 
 ```ts
 // users.ts
-export const users = new Artesia({ basePath: '/users' })
+export const users = Artesia({ basePath: '/users' })
 
 users
   .use(requireAuth) // runs only for /users routes
@@ -380,14 +393,61 @@ users
 // app.ts
 import { users } from './users'
 
-const app = new Artesia({ basePath: '/api/v1' })
+const app = Artesia({ basePath: '/api/v1' })
 
 app
   .use(users)   // → routes mounted at /api/v1/users
   .listen(3000)
 ```
 
-`.use(subApp)` and `.merge(subApp)` are equivalent — prefer `.use()` for consistency with the middleware API.
+You can also mount a sub-app under an explicit prefix:
+
+```ts
+app.use('/v2', subApp)
+```
+
+---
+
+## Error & 404 Handling
+
+### Custom Error Handler (`app.onError`)
+
+Intercept uncaught exceptions thrown in middlewares or handlers:
+
+```ts
+app.onError((err, ctx) => {
+  console.error('Unhandled Error:', err)
+  ctx.set.status(500)
+  return {
+    error: err.message,
+    code: 'INTERNAL_SERVER_ERROR',
+  }
+})
+```
+
+### Custom 404 Handler (`app.notFound`)
+
+Customize the response when no route matches:
+
+```ts
+app.notFound((ctx) => {
+  return ctx.html('<h1>404 — Page Not Found</h1>', 404)
+})
+```
+
+---
+
+## Route Grouping
+
+Group routes under a common path prefix with its own scoped middleware using `app.group()`:
+
+```ts
+app.group('/v1', (v1) => {
+  v1.use(requireAuth)
+  v1.get('/users', getUsers)
+  v1.get('/posts', getPosts)
+})
+```
 
 ---
 
@@ -485,7 +545,7 @@ ctx.set.status(201)
 ctx.set.status('Created')
 ctx.set.status(404)
 ctx.set.status('Not Found')
-ctx.set.status("I'm a Teapot") // 418, yes really
+ctx.set.status("I'm a Teapot") // 418
 ```
 
 #### `ctx.set.headers(...)`
@@ -541,8 +601,10 @@ ctx.set.cookies(
 ## Server Options
 
 ```ts
-const app = new Artesia({
-  basePath: '/api/v1', // Prefix prepended to every route (trailing slash stripped automatically)
+const app = Artesia({
+  basePath: '/api/v1',          // Prefix prepended to every route (trailing slash stripped automatically)
+  poweredBy: 'Artesia',         // Value for X-Powered-By header (default: 'Artesia', set false to disable)
+  maxBodySize: 10 * 1024 * 1024 // Maximum request body size in bytes (default: 10MB)
 })
 ```
 
@@ -571,6 +633,12 @@ createHttps(
 ).listen(443)
 ```
 
+To gracefully stop the server:
+
+```ts
+await app.close()
+```
+
 ---
 
 ## File Uploads
@@ -593,7 +661,6 @@ app.post('/upload', (ctx) => {
   console.log(file.size)       // byte length
   console.log(file.buffer)     // Buffer containing file data
 
-  // write to disk, upload to S3, etc.
   return { uploaded: file.filename }
 })
 ```
@@ -632,7 +699,6 @@ app.get('/profile', (ctx) => {
 
 ```ts
 app.post('/login', (ctx) => {
-  // ... verify credentials
   ctx.set.cookies('session_id', 'generated-session-token', {
     httpOnly: true,
     secure: true,
@@ -655,8 +721,8 @@ import type { Handler } from 'artesia'
 
 // Explicit typed handler
 const getUser: Handler<'/users/:id'> = (ctx) => {
-  //                                             ↑ ctx is Context<'/users/:id'>
   ctx.params.get('id')   // ✅ OK
+  // @ts-expect-error
   ctx.params.get('name') // ❌ Type error — 'name' not in params
 }
 
@@ -670,15 +736,17 @@ import type {
   Context,          // ctx passed to handlers
   Handler,          // (ctx: Context<Path>) => unknown | Promise<unknown>
   Middleware,       // (ctx: Context, next: () => Promise<void>) => unknown
-  ArtesiaOptions,     // { basePath?: string }
-  ArtesiaResponse,    // internal response object
+  ErrorHandler,     // (err: Error, ctx: Context) => unknown
+  NotFoundHandler,  // (ctx: Context) => unknown
+  ArtesiaOptions,   // { basePath?, poweredBy?, maxBodySize? }
+  ArtesiaResponse,  // internal response object
   ContextFile,      // uploaded file shape
   CookieOptions,    // set-cookie options
   FileOptions,      // ctx.file() options
   ExtractParams,    // utility: extracts param keys from a path string
   ParamMap,         // typed Map for ctx.params
   HTTPMethod,       // 'GET' | 'POST' | 'PUT' | ...
-  HttpStatusText,   // 'OK' | 'Not Found' | 'I'm a Teapot' | ...
+  HttpStatusText,   // 'OK' | 'Not Found' | 'I\'m a Teapot' | ...
   HttpRedirectType, // 301 | 302 | 303 | 307 | 308
   RouteDefinition,  // internal route record
   SetResponse,      // ctx.set interface
@@ -714,32 +782,11 @@ const requireAuth = buildMiddleware((ctx, next) => {
 app.use(requireAuth)
 ```
 
-Works great for factory-pattern middleware too:
-
-```ts
-function rateLimit(maxRpm: number) {
-  const counts = new Map<string, number>()
-
-  return buildMiddleware((ctx, next) => {
-    const ip = ctx.headers.get('x-forwarded-for') ?? 'unknown'
-    const count = (counts.get(ip) ?? 0) + 1
-    counts.set(ip, count)
-    if (count > maxRpm) {
-      ctx.set.status(429)
-      return { error: 'Too Many Requests' }
-    }
-    return next()
-  })
-}
-
-app.use(rateLimit(60))
-```
-
 ---
 
 ### `cors`
 
-CORS (Cross-Origin Resource Sharing) middleware. Handles both actual requests and `OPTIONS` preflight requests.
+CORS (Cross-Origin Resource Sharing) middleware. Handles both actual requests and preflight `OPTIONS` requests automatically.
 
 ```ts
 import { cors } from 'artesia/middleware'
@@ -770,8 +817,6 @@ app.use(cors({
 | `credentials` | `boolean` | `false` | Allow cookies / credentials |
 | `maxAge` | `number` | `5` | Preflight cache TTL in seconds |
 
-> **Note:** When `origin` is set to a specific value and a request comes in with a non-matching origin, CORS headers are simply omitted — the browser will block the request. Non-CORS requests (no `Origin` header) pass through unaffected.
-
 ---
 
 ### `logger`
@@ -798,14 +843,6 @@ app.use(logger({
 app.use(logger({ timestamp: false, colorize: false }))
 ```
 
-**Sample output:**
-
-```
-2025-01-15 12:34:56.789 GET     /users/42 → 200 (4ms)
-2025-01-15 12:34:57.001 POST    /users → 201 (12ms)
-2025-01-15 12:34:57.123 DELETE  /users/1 → 404 (2ms)
-```
-
 **`LoggerOptions`:**
 
 | Option | Type | Default | Description |
@@ -815,17 +852,53 @@ app.use(logger({ timestamp: false, colorize: false }))
 | `skip` | `(fields: { method, pathname }) => boolean` | — | Predicate to skip logging |
 | `timestamp` | `'iso' \| 'time' \| false` | `'iso'` | Timestamp format |
 
-**`LogFields`:**
+---
+
+### `secureHeaders`
+
+Sets essential security HTTP response headers (similar to Helmet):
 
 ```ts
-interface LogFields {
-  method:        string        // 'GET', 'POST', ...
-  pathname:      string        // '/users/42'
-  status:        number        // 200, 404, ...
-  durationMs:    number        // response time in ms
-  contentLength: string | null // Content-Length header (best-effort)
-  timestamp:     string        // formatted timestamp string
-}
+import { secureHeaders } from 'artesia/middleware'
+
+app.use(secureHeaders())
+```
+
+**Default headers applied:**
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `X-XSS-Protection: 0`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+Supports options to enable HSTS, Content-Security-Policy, or customize any header.
+
+---
+
+### `requestId`
+
+Generates or propagates a request tracing ID via `X-Request-Id`:
+
+```ts
+import { requestId } from 'artesia/middleware'
+
+app.use(requestId())
+
+app.get('/trace', (ctx) => {
+  return { id: ctx.store.get('requestId') }
+})
+```
+
+---
+
+### `serveStatic`
+
+Serves static files from a local directory with automatic MIME detection and path traversal protection:
+
+```ts
+import { serveStatic } from 'artesia/middleware'
+
+// Serves static files under /static
+app.use('/static', serveStatic({ root: './public' }))
 ```
 
 ---
@@ -846,9 +919,15 @@ interface LogFields {
 | `options` | `(path, ...handlers)` | Register OPTIONS route |
 | `add` | `(method, path, ...handlers)` | Register route for any HTTP method |
 | `use` | `(middleware: Middleware)` | Add global middleware |
+| `use` | `(prefix: string, middleware: Middleware)` | Add path-scoped middleware |
 | `use` | `(app: Artesia)` | Mount a sub-app (middleware scoped to its routes) |
-| `merge` | `(other: Artesia)` | Mount a sub-app — same as `.use(subApp)` |
+| `use` | `(prefix: string, app: Artesia)` | Mount a sub-app under an explicit prefix |
+| `merge` | `(other: Artesia, prefix?: string)` | Mount a sub-app — same as `.use(subApp)` |
+| `group` | `(prefix: string, fn: (group: Artesia) => void)` | Group routes under a common path prefix |
+| `onError` | `(handler: ErrorHandler)` | Register a custom error handler |
+| `notFound` | `(handler: NotFoundHandler)` | Register a custom 404 handler |
 | `listen` | `(port?, hostname?)` | Start the HTTP server — returns `Promise<{ port, server }>` |
+| `close` | `() => Promise<void>` | Stop the running HTTP server |
 | `handler` | `(req, res) => Promise<void>` | Raw Node.js request handler (for custom server integration) |
 
 ### `Artesia(options?)`

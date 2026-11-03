@@ -4,7 +4,11 @@ import { type ArtesiaResponse, isArtesiaResponse } from './types'
 function mergeHeaders(res: ServerResponse, extra: Map<string, string | string[]>): void {
 	for (const [key, val] of extra) {
 		if (Array.isArray(val)) {
-			for (const v of val) res.appendHeader(key, v)
+			if (typeof res.appendHeader === 'function') {
+				for (const v of val) res.appendHeader(key, v)
+			} else {
+				res.setHeader(key, val)
+			}
 		} else {
 			res.setHeader(key, val)
 		}

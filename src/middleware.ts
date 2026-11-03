@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { stat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import type { Context, Middleware } from './types'
 
 /**
@@ -87,9 +90,11 @@ export interface CorsOptions {
 
 const DEFAULT_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 
-function resolveOrigin(allowed: CorsOptions['origin'], requestOrigin: string | null): string | null {
+function resolveOrigin(allowed: CorsOptions['origin'], requestOrigin: string | null, credentials = false): string | null {
 	if (!requestOrigin) return null
-	if (!allowed || allowed === '*') return '*'
+	if (!allowed || allowed === '*') {
+		return credentials ? requestOrigin : '*'
+	}
 	if (typeof allowed === 'string') {
 		return allowed === requestOrigin ? allowed : null
 	}
@@ -147,7 +152,7 @@ export function cors(options: CorsOptions = {}): Middleware {
 		if (!requestOrigin) {
 			return next()
 		}
-		const resolvedOrigin = resolveOrigin(origin, requestOrigin)
+		const resolvedOrigin = resolveOrigin(origin, requestOrigin, credentials)
 		if (ctx.method === 'OPTIONS') {
 			if (resolvedOrigin) {
 				applyCorsHeaders(ctx, resolvedOrigin, credentials, exposedValue)
@@ -325,16 +330,25 @@ export function logger(options: LoggerOptions = {}): Middleware {
 			return next()
 		}
 		const start = performance.now()
-		await next()
+		let error: unknown
+		try {
+			await next()
+		} catch (err) {
+			error = err
+		}
 		const durationMs = Math.round(performance.now() - start)
-		const rawStatus = (ctx as unknown as { __responseStatus?: { value: number } }).__responseStatus?.value ?? 200
+		const rawStatus = error ? 500 : ((ctx as unknown as { __responseStatus?: { value: number } }).__responseStatus?.value ?? 200)
 		const ts = getTimestamp()
+		const cl =
+			(ctx as unknown as { __responseContentLength?: string | null }).__responseContentLength ??
+			(ctx as unknown as { __responseHeaders?: Map<string, string | string[]> }).__responseHeaders?.get('content-length') ??
+			null
 		const fields: LogFields = {
 			method,
 			pathname,
 			status: rawStatus,
 			durationMs,
-			contentLength: null,
+			contentLength: Array.isArray(cl) ? (cl[0] ?? null) : cl,
 			timestamp: ts
 		}
 		let line: string
@@ -355,5 +369,227 @@ export function logger(options: LoggerOptions = {}): Middleware {
 		} else {
 			console.log(line)
 		}
+		if (error) {
+			throw error
+		}
+	})
+}
+
+export interface SecureHeadersOptions {
+	/**
+	 * Value for `X-Content-Type-Options` header.
+	 * @default 'nosniff'
+	 */
+	xContentTypeOptions?: boolean | 'nosniff'
+
+	/**
+	 * Value for `X-Frame-Options` header.
+	 * @default 'SAMEORIGIN'
+	 */
+	xFrameOptions?: false | 'DENY' | 'SAMEORIGIN'
+
+	/**
+	 * Value for `X-XSS-Protection` header.
+	 * @default '0'
+	 */
+	xXssProtection?: boolean | '0' | '1; mode=block'
+
+	/**
+	 * Value for `Referrer-Policy` header.
+	 * @default 'strict-origin-when-cross-origin'
+	 */
+	referrerPolicy?:
+		| false
+		| 'no-referrer'
+		| 'no-referrer-when-downgrade'
+		| 'origin'
+		| 'origin-when-cross-origin'
+		| 'same-origin'
+		| 'strict-origin'
+		| 'strict-origin-when-cross-origin'
+		| 'unsafe-url'
+
+	/**
+	 * `Strict-Transport-Security` (HSTS) configuration.
+	 * @default false
+	 */
+	strictTransportSecurity?:
+		| false
+		| string
+		| {
+				maxAge?: number
+				includeSubDomains?: boolean
+				preload?: boolean
+		  }
+
+	/**
+	 * Value for `Content-Security-Policy` header.
+	 * @default false
+	 */
+	contentSecurityPolicy?: false | string
+}
+
+/**
+ * Middleware that sets common security response headers (similar to Helmet).
+ *
+ * @example
+ * ```ts
+ * import { secureHeaders } from 'artesia/middleware'
+ * app.use(secureHeaders())
+ * ```
+ */
+export function secureHeaders(options: SecureHeadersOptions = {}): Middleware {
+	const {
+		xContentTypeOptions = true,
+		xFrameOptions = 'SAMEORIGIN',
+		xXssProtection = true,
+		referrerPolicy = 'strict-origin-when-cross-origin',
+		strictTransportSecurity = false,
+		contentSecurityPolicy = false
+	} = options
+
+	return buildMiddleware(async (ctx, next) => {
+		if (xContentTypeOptions) {
+			ctx.set.headers('x-content-type-options', xContentTypeOptions === true ? 'nosniff' : xContentTypeOptions)
+		}
+		if (xFrameOptions) {
+			ctx.set.headers('x-frame-options', xFrameOptions)
+		}
+		if (xXssProtection) {
+			ctx.set.headers('x-xss-protection', xXssProtection === true ? '0' : xXssProtection)
+		}
+		if (referrerPolicy) {
+			ctx.set.headers('referrer-policy', referrerPolicy)
+		}
+		if (strictTransportSecurity) {
+			if (typeof strictTransportSecurity === 'string') {
+				ctx.set.headers('strict-transport-security', strictTransportSecurity)
+			} else {
+				const { maxAge = 31536000, includeSubDomains = true, preload = false } = strictTransportSecurity
+				let hsts = `max-age=${maxAge}`
+				if (includeSubDomains) hsts += '; includeSubDomains'
+				if (preload) hsts += '; preload'
+				ctx.set.headers('strict-transport-security', hsts)
+			}
+		}
+		if (contentSecurityPolicy) {
+			ctx.set.headers('content-security-policy', contentSecurityPolicy)
+		}
+		return next()
+	})
+}
+
+export interface RequestIdOptions {
+	/**
+	 * Header name to read and set.
+	 * @default 'x-request-id'
+	 */
+	header?: string
+
+	/**
+	 * Generator function for the request ID.
+	 * Defaults to `crypto.randomUUID()`.
+	 */
+	generator?: () => string
+}
+
+/**
+ * Middleware that generates or propagates an `X-Request-Id` header for request tracing.
+ *
+ * @example
+ * ```ts
+ * import { requestId } from 'artesia/middleware'
+ * app.use(requestId())
+ * ```
+ */
+export function requestId(options: RequestIdOptions = {}): Middleware {
+	const headerName = (options.header ?? 'x-request-id').toLowerCase()
+	const generator = options.generator ?? (() => randomUUID())
+
+	return buildMiddleware(async (ctx, next) => {
+		const existing = ctx.headers.get(headerName)
+		const id = existing && existing.length > 0 ? existing : generator()
+		ctx.store.set('requestId', id)
+		ctx.set.headers(headerName, id)
+		return next()
+	})
+}
+
+export interface ServeStaticOptions {
+	/**
+	 * Root directory on disk to serve static assets from.
+	 */
+	root: string
+
+	/**
+	 * Optional URL prefix to strip from request pathname.
+	 */
+	prefix?: string
+
+	/**
+	 * Default file name to serve when a directory is requested.
+	 * @default 'index.html'
+	 */
+	index?: string
+}
+
+/**
+ * Middleware that serves static files from a local directory.
+ *
+ * @example
+ * ```ts
+ * import { serveStatic } from 'artesia/middleware'
+ * app.use('/static', serveStatic({ root: './public' }))
+ * ```
+ */
+export function serveStatic(options: ServeStaticOptions): Middleware {
+	const { root, prefix, index = 'index.html' } = options
+	const absoluteRoot = resolve(root)
+	const cleanPrefix = prefix ? (prefix.startsWith('/') ? prefix : `/${prefix}`).replace(/\/+$/, '') : null
+
+	return buildMiddleware(async (ctx, next) => {
+		if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+			return next()
+		}
+
+		let reqPath: string
+		try {
+			reqPath = decodeURIComponent(ctx.pathname)
+		} catch {
+			return next()
+		}
+
+		const stripPrefix = cleanPrefix ?? (ctx as unknown as { __mountPrefix?: string }).__mountPrefix
+		if (stripPrefix && reqPath.startsWith(stripPrefix)) {
+			reqPath = reqPath.slice(stripPrefix.length)
+		}
+
+		const safeRelative = reqPath.replace(/^[/\\]+/, '')
+		const targetPath = resolve(absoluteRoot, safeRelative)
+		if (!targetPath.startsWith(absoluteRoot)) {
+			ctx.set.status(403)
+			return { error: 'Forbidden' }
+		}
+
+		try {
+			const info = await stat(targetPath)
+			if (info.isDirectory()) {
+				const indexPath = join(targetPath, index)
+				try {
+					const indexInfo = await stat(indexPath)
+					if (indexInfo.isFile()) {
+						return await ctx.file(indexPath)
+					}
+				} catch {}
+				return next()
+			}
+			if (info.isFile()) {
+				return await ctx.file(targetPath)
+			}
+		} catch {
+			return next()
+		}
+
+		return next()
 	})
 }
